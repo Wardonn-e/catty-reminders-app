@@ -39,32 +39,34 @@ jobs:
 
       - name: Deploy on VM via SSH
         run: |
-          ssh -i ~/.ssh/vm_key -p "${SSH_PORT}" -o BatchMode=yes "${SSH_USER}@${PROXY}" bash <<'EOSSH'
+          ssh -i ~/.ssh/vm_key -p "${SSH_PORT}" -o BatchMode=yes "${SSH_USER}@${PROXY}" \
+            "IMAGE='${IMAGE}' APP_PORT='${APP_PORT}' bash -s" <<'EOSSH'
           set -euo pipefail
-
+        
           echo "Docker login to GHCR..."
           echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
-
+        
           echo "Pull image: ${IMAGE}"
           docker pull "${IMAGE}"
-
+        
           echo "Stop old container (if exists)..."
           docker stop reminders-container || true
-          docker rm   reminders-container || true
-
+          docker rm reminders-container || true
+        
           echo "Run new container..."
           docker run -d \
             --name reminders-container \
             --restart unless-stopped \
             -p ${APP_PORT}:${APP_PORT} \
             "${IMAGE}"
-
+        
           echo "Prune old images..."
           docker image prune -f || true
-
+        
           echo "Container status:"
           docker ps --filter "name=reminders-container"
           EOSSH
+
 
       - name: Healthcheck
         run: |
