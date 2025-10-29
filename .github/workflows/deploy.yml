@@ -1,53 +1,80 @@
-name: CD
+name: CD - Deploy on Release
 
 on:
-  push:
-    branches: [ master ]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  # === Repository Variables (Settings → Variables → Actions) ===
+  PROXY: ${{ vars.PROXY }}          # напр. course.prafdin.ru
+  ID: ${{ vars.ID }}                # напр. kazaev
+  SSH_PORT: ${{ vars.SSH_PORT }}    # напр. 2444
+  SSH_USER: ${{ vars.SSH_USER }}    # напр. roman или vboxuser
+  APP_PORT: ${{ vars.APP_PORT }}    # напр. 8181
+  IMAGE: ${{ vars.IMAGE }}          # ghcr.io/owner/repo:latest (нижний регистр!)
+  HEALTH_URL: http://app.${{ vars.ID }}.${{ vars.PROXY }}/
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup SSH key
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/vm_key
-        chmod 600 ~/.ssh/vm_key
-        
-    - name: Deploy Docker container to VM
-      run: |
-        echo "Starting Docker deployment..."
-        ssh -o StrictHostKeyChecking=no \
-            -o ConnectTimeout=15 \
-            -i ~/.ssh/vm_key \
-            -p 2440 \
-            vboxuser@course.prafdin.ru "
-          echo 'Logging in to GHCR...'
-          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          
-          echo 'Pulling latest Docker image...'
-          docker pull ghcr.io/sk1fix/catty-reminders:latest
-          
-          echo 'Stopping and removing old container...'
+      - name: Checkout (optional)
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/vm_key
+          chmod 600 ~/.ssh/vm_key
+          ssh-keyscan -p "${SSH_PORT}" "${PROXY}" >> ~/.ssh/known_hosts
+
+      - name: Deploy on VM via SSH
+        run: |
+          ssh -i ~/.ssh/vm_key -p "${SSH_PORT}" -o BatchMode=yes "${SSH_USER}@${PROXY}" bash <<'EOSSH'
+          set -euo pipefail
+
+          echo "Docker login to GHCR..."
+          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
+          echo "Pull image: ${IMAGE}"
+          docker pull "${IMAGE}"
+
+          echo "Stop old container (if exists)..."
           docker stop reminders-container || true
-          docker rm reminders-container || true
-          
-          echo 'Starting new container...'
+          docker rm   reminders-container || true
+
+          echo "Run new container..."
           docker run -d \
             --name reminders-container \
             --restart unless-stopped \
-            -p 8181:8181 \
-            ghcr.io/sk1fix/catty-reminders:latest
-          
-          echo 'Cleaning up old images...'
-          docker image prune -f
-          
-          echo 'Docker deployment completed!'
-          echo 'Container status:'
-          docker ps --filter 'name=reminders-container'
-          echo 'Application: http://app.agafonov.course.prafdin.ru'
-        "
+            -p ${APP_PORT}:${APP_PORT} \
+            "${IMAGE}"
+
+          echo "Prune old images..."
+          docker image prune -f || true
+
+          echo "Container status:"
+          docker ps --filter "name=reminders-container"
+          EOSSH
+
+      - name: Healthcheck
+        run: |
+          echo "Check ${HEALTH_URL}"
+          for i in {1..12}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "${HEALTH_URL}" || true)
+            if [ "$code" = "200" ] || [ "$code" = "302" ]; then
+              echo "OK ($code)"
+              exit 0
+            fi
+            echo "Waiting ($i)... got $code"; sleep 5
+          done
+          echo "Healthcheck failed"; exit 1
