@@ -1,0 +1,38 @@
+name: CD
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/vm_key
+        chmod 600 ~/.ssh/vm_key
+        
+    - name: Deploy to VM
+      run: |
+        echo "Starting deployment..."
+        ssh -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=15 \
+            -i ~/.ssh/vm_key \
+            -p ${{ vars.SSH_PORT }} \
+            ${{ vars.SSH_USER }}@${{ vars.PROXY }} "
+          cd ${{ vars.APP_DIR }}
+          echo 'Pulling latest code...'
+          git pull origin github-actions
+          echo 'Installing dependencies...'
+          pip install -r requirements.txt
+          echo 'Restarting service...'
+          sudo systemctl restart catty-reminders
+          echo 'Deployment completed!'
+          echo 'Application: http://app.${{ vars.ID }}.${{ vars.PROXY }}'
+        "
