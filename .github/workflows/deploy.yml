@@ -9,13 +9,12 @@ permissions:
   packages: read
 
 env:
-  # === Repository Variables (Settings → Variables → Actions) ===
-  PROXY: ${{ vars.PROXY }}          # напр. course.prafdin.ru
-  ID: ${{ vars.ID }}                # напр. kazaev
-  SSH_PORT: ${{ vars.SSH_PORT }}    # напр. 2444
-  SSH_USER: ${{ vars.SSH_USER }}    # напр. roman или vboxuser
-  APP_PORT: ${{ vars.APP_PORT }}    # напр. 8181
-  IMAGE: ${{ vars.IMAGE }}          # ghcr.io/owner/repo:latest (нижний регистр!)
+  PROXY: ${{ vars.PROXY }}          
+  ID: ${{ vars.ID }}               
+  SSH_PORT: ${{ vars.SSH_PORT }}    
+  SSH_USER: ${{ vars.SSH_USER }}    
+  APP_PORT: ${{ vars.APP_PORT }}    
+  IMAGE: ${{ vars.IMAGE }}          
   HEALTH_URL: http://app.${{ vars.ID }}.${{ vars.PROXY }}/
 
 jobs:
