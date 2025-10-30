@@ -28,7 +28,7 @@ jobs:
             ${{ vars.SSH_USER }}@${{ vars.PROXY }} "
           cd ${{ vars.APP_DIR }}
           echo 'Pulling latest code...'
-          git pull origin github-actions
+          git pull origin actions
           echo 'Installing dependencies...'
           pip install -r requirements.txt
           echo 'Restarting service...'
